@@ -107,7 +107,12 @@ async function run() {
     })
 
 
-
+    // Get all Submition 
+    app.get('/api/v1/submitions', async (req, res) => {
+      const filter= {status: false}
+      const result = await submitionCollection.find(filter).toArray();
+      res.send(result);
+    })
 
     // Submition create
     app.post('/api/v1/create-submition', async (req, res) => {
