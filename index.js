@@ -68,7 +68,6 @@ async function run() {
       const queryLevel = {};
       const page = Number(req.query?.page)
       const size = Number(req.query?.size)
-      console.log(page, size);
       
       const level = req.query?.level;
       if(level){
@@ -105,14 +104,12 @@ async function run() {
     // Create assignments
     app.patch("/api/v1/update-assignment/:id", async (req, res) => {
         const id = req.params?.id;
-        console.log(id);
         const filter = {_id: new ObjectId(id)};
         const assignment = req.body;
 
         const updateDoc = {
           $set: assignment
         }
-
         const result = await assignmentCollection.updateOne(filter, updateDoc);
         res.send(result);
     })
@@ -122,15 +119,29 @@ async function run() {
       const email = req.query?.email;
       const tokenEmail = req.user?.email;
       if( email !== tokenEmail ){
-        return res.status(401).send({
+        return res.status(403).send({
           message : "Unauthorize",
           success : false,
         })
       }
-      const filter = {email: email};
-      const result = await assignmentCollection.find(filter).toArray();
+
+      const query = {};
+      if( email ){
+        query.email = email
+      }
+      console.log(query);
+
+      const result = await assignmentCollection.find(query).toArray();
       res.send(result)
     })
+
+    // Feature assignment get
+    app.get("/api/v1/features-assignment", async (req, res) => {
+      const query = {features : true};
+      const result = await assignmentCollection.find(query).toArray();
+      res.send(result)
+    })
+
 
     // Delete my assignment
     app.delete("/api/v1/delete-my-assign/:id", verifyToken , async (req, res) => {
@@ -190,6 +201,16 @@ async function run() {
       }).send({
         message : "Token create successfull",
         status: true,
+      })
+    })
+
+    // clear cookies
+    app.post(`/api/v1/logout`, async (req, res) => {
+      res.clearCookie("accessToken", {
+        maxAge: 0
+      }).send({
+        message : "Logout",
+        success : true,
       })
     })
 
