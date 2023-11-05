@@ -1,10 +1,13 @@
 const express = require('express');
 const app = express();
+const jwt = require('jsonwebtoken');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const port = process.env.PORT || 5000;
 const cors = require('cors');
+const cookieParser = require('cookie-parser')
 const dotenv = require('dotenv');
 dotenv.config();
+
 
 
 
@@ -14,8 +17,32 @@ app.use(cors({
   origin : ["http://localhost:5173"],
   credentials: true,
 }));
+app.use(cookieParser());
 
 
+
+// verifyToken
+const verifyToken = (req, res, next) => {
+  const token = req.cookies?.accessToken;
+  if(!token){
+    return res.status(401).send({
+      message : "Unauthorize",
+      success : false,
+    })
+  }
+
+  jwt.verify(token, process.env.APP_SECRET , function(err, decoded) {
+    if(err){
+      return res.status(401).send({
+        message : "Unauthorize",
+        success : false,
+      })
+    }
+    req.user = decoded
+    next();
+  });
+
+}
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.t259fjj.mongodb.net/?retryWrites=true&w=majority`;
@@ -91,16 +118,31 @@ async function run() {
     })
 
     // user wish assignment get
-    app.get("/api/v1/my-assignment", async (req, res) => {
+    app.get("/api/v1/my-assignment",verifyToken, async (req, res) => {
       const email = req.query?.email;
+      const tokenEmail = req.user?.email;
+      if( email !== tokenEmail ){
+        return res.status(401).send({
+          message : "Unauthorize",
+          success : false,
+        })
+      }
       const filter = {email: email};
       const result = await assignmentCollection.find(filter).toArray();
       res.send(result)
     })
 
     // Delete my assignment
-    app.delete("/api/v1/delete-my-assign/:id", async (req, res) => {
+    app.delete("/api/v1/delete-my-assign/:id", verifyToken , async (req, res) => {
       const id = req.params?.id;
+      const tokenEmail = req.user?.email;
+      const email = req.query?.email;
+      if( tokenEmail !== email ){
+        return res.status(401).send({
+          message : "Unauthorize",
+          success : false,
+        })
+      }
       const filter = {_id: new ObjectId(id) };
       const result = await assignmentCollection.deleteOne(filter);
       res.send(result)
@@ -135,6 +177,20 @@ async function run() {
       }
       const result = await submitionCollection.updateOne(filter, doc);
       res.send(result);
+    })
+
+
+    // Create jwt 
+    app.post('/api/v1/jwt', async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.APP_SECRET , {expiresIn: "1h"} );
+      res.cookie("accessToken", token, {
+        httpOnly: true,
+        secure: true,
+      }).send({
+        message : "Token create successfull",
+        status: true,
+      })
     })
 
 
