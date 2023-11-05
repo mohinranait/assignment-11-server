@@ -108,7 +108,7 @@ async function run() {
 
 
     // Get all Submition 
-    app.get('/api/v1/submitions', async (req, res) => {
+    app.get('/api/v1/pending-submitions', async (req, res) => {
       const filter= {status: false}
       const result = await submitionCollection.find(filter).toArray();
       res.send(result);
@@ -118,6 +118,22 @@ async function run() {
     app.post('/api/v1/create-submition', async (req, res) => {
       const submition = req.body;
       const result = await submitionCollection.insertOne(submition);
+      res.send(result);
+    })
+
+    // Submition create
+    app.patch('/api/v1/update-submite/:id', async (req, res) => {
+      const id = req.params?.id;
+      const filter = { _id: new ObjectId(id) };
+      const submition = req.body;
+      const doc = {
+        $set : {
+          given_marks : submition.examinMarks,
+          feedback : submition.feedback,
+          status : true
+        }
+      }
+      const result = await submitionCollection.updateOne(filter, doc);
       res.send(result);
     })
 
