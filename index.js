@@ -34,6 +34,7 @@ async function run() {
   
     const database = client.db("assignment_10");
     const assignmentCollection = database.collection('assignments');
+    const submitionCollection = database.collection('submissions');
 
     // get all assignments
     app.get("/api/v1/assignments", async (req, res) => {
@@ -103,6 +104,16 @@ async function run() {
       const filter = {_id: new ObjectId(id) };
       const result = await assignmentCollection.deleteOne(filter);
       res.send(result)
+    })
+
+
+
+
+    // Submition create
+    app.post('/api/v1/create-submition', async (req, res) => {
+      const submition = req.body;
+      const result = await submitionCollection.insertOne(submition);
+      res.send(result);
     })
 
 
