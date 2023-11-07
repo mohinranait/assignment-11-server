@@ -9,13 +9,16 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 
-
-
 // Middlewire
 app.use(express.json());
 app.use(cors({
-  origin : ["http://localhost:5173"],
+  origin: [
+    // 'http://localhost:5173',
+    'https://assignment-11-99dd7.web.app',
+    'https://assignment-11-99dd7.firebaseapp.com'
+  ],
   credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 }));
 app.use(cookieParser());
 
@@ -86,11 +89,9 @@ async function run() {
     app.get("/api/v1/assignment/:id", async (req, res) => {
       const id = req.params.id;
       const filter = {_id: new ObjectId(id)};
-
-
       const result = await assignmentCollection.findOne(filter)
       res.send(result);
-  })
+    })
 
     // Create assignments
     app.post("/api/v1/create-assignment", async (req, res) => {
@@ -102,16 +103,38 @@ async function run() {
 
 
     // Create assignments
-    app.patch("/api/v1/update-assignment/:id", async (req, res) => {
+    app.patch("/api/v1/update-assignment/:id", verifyToken, async (req, res) => {
         const id = req.params?.id;
-        const filter = {_id: new ObjectId(id)};
-        const assignment = req.body;
+        const queryEmail = req.query?.email;
+        const tokenEmail = req.user?.email;
+        const productEmail  = req.query?.productEmail;
 
+        if(queryEmail !== tokenEmail){
+          return res.send({
+            message : "You don't own this assignment",
+            success : false,
+          })
+        }
+
+        const filter = {
+          _id: new ObjectId(id),
+        };
+
+        const assignment = req.body;
         const updateDoc = {
           $set: assignment
         }
-        const result = await assignmentCollection.updateOne(filter, updateDoc);
-        res.send(result);
+
+        if( productEmail === tokenEmail ){
+          const result = await assignmentCollection.updateOne(filter, updateDoc);
+          res.send(result);
+        }else{
+          res.send({
+            success: false,
+            message : "You do not own this assignment"
+          })
+        }
+       
     })
 
     // user wish assignment get
@@ -129,7 +152,6 @@ async function run() {
       if( email ){
         query.email = email
       }
-      console.log(query);
 
       const result = await assignmentCollection.find(query).toArray();
       res.send(result)
@@ -148,15 +170,27 @@ async function run() {
       const id = req.params?.id;
       const tokenEmail = req.user?.email;
       const email = req.query?.email;
+      const assignEmail = req.query?.assemail;
       if( tokenEmail !== email ){
         return res.status(401).send({
           message : "Unauthorize",
           success : false,
         })
       }
-      const filter = {_id: new ObjectId(id) };
-      const result = await assignmentCollection.deleteOne(filter);
-      res.send(result)
+
+      const filter = {
+        _id: new ObjectId(id)
+      };
+
+      if( assignEmail == email ){
+        const result = await assignmentCollection.deleteOne(filter);
+        res.send(result)
+      }else{
+        res.send({
+          success: false,
+          message : "You do not own this assignment"
+        })
+      }
     })
 
 
@@ -188,6 +222,28 @@ async function run() {
       }
       const result = await submitionCollection.updateOne(filter, doc);
       res.send(result);
+    })
+
+    // my submition 
+    app.get("/api/v1/my-submition", verifyToken, async (req, res) => {
+      const queryEmail = req.query?.email;
+      const tokenEmail = req?.user?.email;
+
+      if( queryEmail !== tokenEmail ){
+        return res.status(401).send({
+          message : "Unauthorize",
+          success : false,
+        })
+      }
+
+      const query = {};
+      if( queryEmail ){
+        query.email  = queryEmail;
+      }
+
+      const result = await submitionCollection.find(query).toArray();
+      res.send(result);
+
     })
 
 
