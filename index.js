@@ -1,32 +1,31 @@
 const express = require('express');
-const app = express();
-const jwt = require('jsonwebtoken');
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-const port = process.env.PORT || 5000;
+require('dotenv').config();
 const cors = require('cors');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser')
-const dotenv = require('dotenv');
-dotenv.config();
+const app = express();
+
+const port = process.env.PORT || 5000;
+const jwtSecret = process.env.APP_SECRET
 
 
 // Middlewire
+app.use(
+  cors({
+    origin: ['http://localhost:5173', 'https://assignment-11-99dd7.web.app'],
+    credentials: true,
+    // methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+  })
+);
 app.use(express.json());
-app.use(cors({
-  origin: [
-    // 'http://localhost:5173',
-    'https://assignment-11-99dd7.web.app',
-    'https://assignment-11-99dd7.firebaseapp.com'
-  ],
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-}));
 app.use(cookieParser());
 
 
 
 // verifyToken
 const verifyToken = (req, res, next) => {
-  const token = req.cookies?.accessToken;
+  const token = req.cookies?.token;
   if(!token){
     return res.status(401).send({
       message : "Unauthorize",
@@ -34,7 +33,7 @@ const verifyToken = (req, res, next) => {
     })
   }
 
-  jwt.verify(token, process.env.APP_SECRET , function(err, decoded) {
+  jwt.verify(token, jwtSecret , function(err, decoded) {
     if(err){
       return res.status(401).send({
         message : "Unauthorize",
@@ -59,231 +58,291 @@ const client = new MongoClient(uri, {
   }
 });
 
-async function run() {
+
+
+const dbConnect = async () => {
   try {
-  
-    const database = client.db("assignment_10");
-    const assignmentCollection = database.collection('assignments');
-    const submitionCollection = database.collection('submissions');
-
-    // get all assignments
-    app.get("/api/v1/assignments", async (req, res) => {
-      const queryLevel = {};
-      const page = Number(req.query?.page)
-      const size = Number(req.query?.size)
-      
-      const level = req.query?.level;
-      if(level){
-        queryLevel.level = level
-      }
-        const cursor =  assignmentCollection.find(queryLevel).skip(page*size).limit(size)
-        const result = await cursor.toArray();
-        const count = await assignmentCollection.estimatedDocumentCount();
-        res.send({
-          result,
-          count : Number(count)
-        });
-    })
-
-    // get assignment using ID
-    app.get("/api/v1/assignment/:id", async (req, res) => {
-      const id = req.params.id;
-      const filter = {_id: new ObjectId(id)};
-      const result = await assignmentCollection.findOne(filter)
-      res.send(result);
-    })
-
-    // Create assignments
-    app.post("/api/v1/create-assignment", async (req, res) => {
-        const assignment = req.body;
-        const result = await assignmentCollection.insertOne(assignment);
-        res.send(result);
-    })
-
-
-
-    // Create assignments
-    app.patch("/api/v1/update-assignment/:id", verifyToken, async (req, res) => {
-        const id = req.params?.id;
-        const queryEmail = req.query?.email;
-        const tokenEmail = req.user?.email;
-        const productEmail  = req.query?.productEmail;
-
-        if(queryEmail !== tokenEmail){
-          return res.send({
-            message : "You don't own this assignment",
-            success : false,
-          })
-        }
-
-        const filter = {
-          _id: new ObjectId(id),
-        };
-
-        const assignment = req.body;
-        const updateDoc = {
-          $set: assignment
-        }
-
-        if( productEmail === tokenEmail ){
-          const result = await assignmentCollection.updateOne(filter, updateDoc);
-          res.send(result);
-        }else{
-          res.send({
-            success: false,
-            message : "You do not own this assignment"
-          })
-        }
-       
-    })
-
-    // user wish assignment get
-    app.get("/api/v1/my-assignment",verifyToken, async (req, res) => {
-      const email = req.query?.email;
-      const tokenEmail = req.user?.email;
-      if( email !== tokenEmail ){
-        return res.status(403).send({
-          message : "Unauthorize",
-          success : false,
-        })
-      }
-
-      const query = {};
-      if( email ){
-        query.email = email
-      }
-
-      const result = await assignmentCollection.find(query).toArray();
-      res.send(result)
-    })
-
-    // Feature assignment get
-    app.get("/api/v1/features-assignment", async (req, res) => {
-      const query = {features : true};
-      const result = await assignmentCollection.find(query).toArray();
-      res.send(result)
-    })
-
-
-    // Delete my assignment
-    app.delete("/api/v1/delete-my-assign/:id", verifyToken , async (req, res) => {
-      const id = req.params?.id;
-      const tokenEmail = req.user?.email;
-      const email = req.query?.email;
-      const assignEmail = req.query?.assemail;
-      if( tokenEmail !== email ){
-        return res.status(401).send({
-          message : "Unauthorize",
-          success : false,
-        })
-      }
-
-      const filter = {
-        _id: new ObjectId(id)
-      };
-
-      if( assignEmail == email ){
-        const result = await assignmentCollection.deleteOne(filter);
-        res.send(result)
-      }else{
-        res.send({
-          success: false,
-          message : "You do not own this assignment"
-        })
-      }
-    })
-
-
-    // Get all Submition 
-    app.get('/api/v1/pending-submitions', async (req, res) => {
-      const filter= {status: false}
-      const result = await submitionCollection.find(filter).toArray();
-      res.send(result);
-    })
-
-    // Submition create
-    app.post('/api/v1/create-submition', async (req, res) => {
-      const submition = req.body;
-      const result = await submitionCollection.insertOne(submition);
-      res.send(result);
-    })
-
-    // Submition create
-    app.patch('/api/v1/update-submite/:id', async (req, res) => {
-      const id = req.params?.id;
-      const filter = { _id: new ObjectId(id) };
-      const submition = req.body;
-      const doc = {
-        $set : {
-          given_marks : submition.examinMarks,
-          feedback : submition.feedback,
-          status : true
-        }
-      }
-      const result = await submitionCollection.updateOne(filter, doc);
-      res.send(result);
-    })
-
-    // my submition 
-    app.get("/api/v1/my-submition", verifyToken, async (req, res) => {
-      const queryEmail = req.query?.email;
-      const tokenEmail = req?.user?.email;
-
-      if( queryEmail !== tokenEmail ){
-        return res.status(401).send({
-          message : "Unauthorize",
-          success : false,
-        })
-      }
-
-      const query = {};
-      if( queryEmail ){
-        query.email  = queryEmail;
-      }
-
-      const result = await submitionCollection.find(query).toArray();
-      res.send(result);
-
-    })
-
-
-    // Create jwt 
-    app.post('/api/v1/jwt', async (req, res) => {
-      const user = req.body;
-      const token = jwt.sign(user, process.env.APP_SECRET , {expiresIn: "1h"} );
-      res.cookie("accessToken", token, {
-        httpOnly: true,
-        secure: true,
-      }).send({
-        message : "Token create successfull",
-        status: true,
-      })
-    })
-
-    // clear cookies
-    app.post(`/api/v1/logout`, async (req, res) => {
-      res.clearCookie("accessToken", {
-        maxAge: 0
-      }).send({
-        message : "Logout",
-        success : true,
-      })
-    })
-
-
+    client.connect();
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
-  } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
+  } catch (error) {
+    console.log("DB error name:" , error.message);
   }
 }
-run().catch(console.dir);
+dbConnect();
 
 
+const database = client.db("assignment_10");
+const assignmentCollection = database.collection('assignments');
+const submitionCollection = database.collection('submissions');
 
+
+// Default 
 app.get("/", (req, res) => {
-    res.send("Home route is working");
+  res.send("Home route is working");
 })
+
+// get all assignments
+app.get("/api/v1/assignments", async (req, res) => {
+  try {
+    const queryLevel = {};
+    const page = Number(req.query?.page)
+    const size = Number(req.query?.size)
+    
+    const level = req.query?.level;
+    if(level){
+      queryLevel.level = level
+    }
+    const cursor =  assignmentCollection.find(queryLevel).skip(page*size).limit(size)
+    const result = await cursor.toArray();
+    const count = await assignmentCollection.estimatedDocumentCount();
+    res.send({
+      result,
+      count : Number(count)
+    });
+  } catch (error) {
+    res.send({
+      success : false,
+      error : error.message,
+    })
+  }
+})
+
+// get assignment using ID
+app.get("/api/v1/assignment/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const filter = {_id: new ObjectId(id)};
+    const result = await assignmentCollection.findOne(filter)
+    res.send(result);
+  } catch (error) {
+    res.send({
+      success : false,
+      error : error.message,
+    })
+  }
+})
+
+// Create assignments
+app.post("/api/v1/create-assignment", async (req, res) => {
+   try {
+      const assignment = req.body;
+      const result = await assignmentCollection.insertOne(assignment);
+      res.send(result);
+  } catch (error) {
+    res.send({
+      success : false,
+      error : error.message,
+    })
+  }
+})
+
+
+
+// Create assignments
+app.patch("/api/v1/update-assignment/:id", verifyToken, async (req, res) => {
+    
+  try {
+    const id = req.params?.id;
+    const queryEmail = req.query?.email;
+    const tokenEmail = req.user?.email;
+    const productEmail  = req.query?.productEmail;
+
+    if(queryEmail !== tokenEmail){
+      return res.send({
+        message : "You don't own this assignment",
+        success : false,
+      })
+    }
+
+    const filter = {
+      _id: new ObjectId(id),
+    };
+
+    const assignment = req.body;
+    const updateDoc = {
+      $set: assignment
+    }
+
+    if( productEmail === tokenEmail ){
+      const result = await assignmentCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    }else{
+      res.send({
+        success: false,
+        message : "You do not own this assignment"
+      })
+    }
+  } catch (error) {
+    res.send({
+      success : false,
+      error : error.message,
+    })
+  }
+   
+})
+
+// user wish assignment get
+app.get("/api/v1/my-assignment",verifyToken, async (req, res) => {
+  try {
+    const email = req.query?.email;
+    const tokenEmail = req.user?.email;
+    if( email !== tokenEmail ){
+      return res.status(403).send({
+        message : "Unauthorize",
+        success : false,
+      })
+    }
+
+    const query = {};
+    if( email ){
+      query.email = email
+    }
+
+    const result = await assignmentCollection.find(query).toArray();
+    res.send(result)
+  } catch (error) {
+    res.send({
+      success : false,
+      error : error.message,
+    })
+  }
+})
+
+// Feature assignment get
+app.get("/api/v1/features-assignment", async (req, res) => {
+  try {
+    const query = {features : true};
+    const result = await assignmentCollection.find(query).toArray();
+    res.send(result)
+  } catch (error) {
+    res.send({
+      success : false,
+      error : error.message,
+    })
+  }
+})
+
+
+// Delete my assignment
+app.delete("/api/v1/delete-my-assign/:id", verifyToken , async (req, res) => {
+  const id = req.params?.id;
+  const tokenEmail = req.user?.email;
+  const email = req.query?.email;
+  const assignEmail = req.query?.assemail;
+  if( tokenEmail !== email ){
+    return res.status(401).send({
+      message : "Unauthorize",
+      success : false,
+    })
+  }
+
+  const filter = {
+    _id: new ObjectId(id)
+  };
+
+  if( assignEmail == email ){
+    const result = await assignmentCollection.deleteOne(filter);
+    res.send(result)
+  }else{
+    res.send({
+      success: false,
+      message : "You do not own this assignment"
+    })
+  }
+})
+
+
+// Get all Submition 
+app.get('/api/v1/pending-submitions', async (req, res) => {
+  const filter= {status: false}
+  const result = await submitionCollection.find(filter).toArray();
+  res.send(result);
+})
+
+// Submition create
+app.post('/api/v1/create-submition', async (req, res) => {
+  const submition = req.body;
+  const result = await submitionCollection.insertOne(submition);
+  res.send(result);
+})
+
+// Submition create
+app.patch('/api/v1/update-submite/:id', async (req, res) => {
+  const id = req.params?.id;
+  const filter = { _id: new ObjectId(id) };
+  const submition = req.body;
+  const doc = {
+    $set : {
+      given_marks : submition.examinMarks,
+      feedback : submition.feedback,
+      status : true
+    }
+  }
+  const result = await submitionCollection.updateOne(filter, doc);
+  res.send(result);
+})
+
+// my submition 
+app.get("/api/v1/my-submition", verifyToken, async (req, res) => {
+  const queryEmail = req.query?.email;
+  const tokenEmail = req?.user?.email;
+
+  if( queryEmail !== tokenEmail ){
+    return res.status(401).send({
+      message : "Unauthorize",
+      success : false,
+    })
+  }
+
+  const query = {};
+  if( queryEmail ){
+    query.email  = queryEmail;
+  }
+
+  const result = await submitionCollection.find(query).toArray();
+  res.send(result);
+
+})
+
+
+// Create jwt 
+app.post('/api/v1/jwt', async (req, res) => {
+  try {
+    const user = req.body;
+    const token = jwt.sign(user, jwtSecret , {expiresIn: "1h"} );
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+    }).send({
+      status: true,
+    })
+  } catch (error) {
+    res.send({
+      success: false,
+      message : "You do not own this assignment"
+    })
+  }
+})
+
+// clear cookies
+app.post(`/api/v1/logout`, async (req, res) => {
+  try {
+    res.clearCookie('token', {
+      maxAge: 0,
+      secure: process.env.NODE_ENV === 'production' ? true : false,
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+    }).send({ status: true })
+  } catch (error) {
+    res.send({
+      success: false,
+      error : error.message, 
+    })
+  }
+})
+
+
+
 
 
 app.listen(port , () => {
