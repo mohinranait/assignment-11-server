@@ -74,6 +74,7 @@ dbConnect();
 const database = client.db("assignment_10");
 const assignmentCollection = database.collection('assignments');
 const submitionCollection = database.collection('submissions');
+const userCollection = database.collection('user');
 
 
 // Default 
@@ -126,7 +127,9 @@ app.get("/api/v1/assignment/:id", async (req, res) => {
 app.post("/api/v1/create-assignment", async (req, res) => {
    try {
       const assignment = req.body;
-      const result = await assignmentCollection.insertOne(assignment);
+      const email = req.query?.email
+      const isExistsUser = await userCollection.findOne({email})
+      const result = await assignmentCollection.insertOne({...assignment, user: isExistsUser?._id, updateAt: new Date()});
       res.send(result);
   } catch (error) {
     res.send({
@@ -138,7 +141,7 @@ app.post("/api/v1/create-assignment", async (req, res) => {
 
 
 
-// Create assignments
+// Update assignments
 app.patch("/api/v1/update-assignment/:id", verifyToken, async (req, res) => {
     
   try {
@@ -148,11 +151,14 @@ app.patch("/api/v1/update-assignment/:id", verifyToken, async (req, res) => {
     const productEmail  = req.query?.productEmail;
 
     if(queryEmail !== tokenEmail){
-      return res.send({
+      return res.status(401).send({
         message : "You don't own this assignment",
         success : false,
       })
     }
+
+    const isExistsUser = await userCollection.findOne({email:queryEmail})
+
 
     const filter = {
       _id: new ObjectId(id),
@@ -160,7 +166,7 @@ app.patch("/api/v1/update-assignment/:id", verifyToken, async (req, res) => {
 
     const assignment = req.body;
     const updateDoc = {
-      $set: assignment
+      $set: {...assignment, user:isExistsUser?._id,updateAt: new Date()}
     }
 
     if( productEmail === tokenEmail ){
@@ -172,6 +178,31 @@ app.patch("/api/v1/update-assignment/:id", verifyToken, async (req, res) => {
         message : "You do not own this assignment"
       })
     }
+  } catch (error) {
+    res.send({
+      success : false,
+      error : error.message,
+    })
+  }
+   
+})
+
+// Update assignments
+app.patch("/api/v1/update-students/:id", async (req, res) => {
+    
+  try {
+    const id = req.params?.id;
+    const filter = {
+      _id: new ObjectId(id),
+    };
+    const assignment = req.body;
+    const updateDoc = {
+      $set: assignment
+    }
+
+    const result = await assignmentCollection.updateOne(filter, updateDoc);
+    res.send(result);
+   
   } catch (error) {
     res.send({
       success : false,
@@ -225,45 +256,57 @@ app.get("/api/v1/features-assignment", async (req, res) => {
 
 // Delete my assignment
 app.delete("/api/v1/delete-my-assign/:id", verifyToken , async (req, res) => {
-  const id = req.params?.id;
-  const tokenEmail = req.user?.email;
-  const email = req.query?.email;
-  const assignEmail = req.query?.assemail;
-  if( tokenEmail !== email ){
-    return res.status(401).send({
-      message : "Unauthorize",
-      success : false,
-    })
-  }
+  try {
+    const id = req.params?.id;
+    const tokenEmail = req.user?.email;
+    const email = req.query?.email;
+    const assignEmail = req.query?.assemail;
+    if( tokenEmail !== email ){
+      return res.status(401).send({
+        message : "Unauthorize",
+        success : false,
+      })
+    }
 
-  const filter = {
-    _id: new ObjectId(id)
-  };
+    const filter = {
+      _id: new ObjectId(id)
+    };
 
-  if( assignEmail == email ){
-    const result = await assignmentCollection.deleteOne(filter);
-    res.send(result)
-  }else{
-    res.send({
-      success: false,
-      message : "You do not own this assignment"
-    })
+    if( assignEmail == email ){
+      const result = await assignmentCollection.deleteOne(filter);
+      res.send(result)
+    }else{
+      res.send({
+        success: false,
+        message : "You do not own this assignment"
+      })
+    }
+  } catch (error) {
+    
   }
 })
 
 
 // Get all Submition 
 app.get('/api/v1/pending-submitions', async (req, res) => {
+ try {
   const filter= {status: false}
   const result = await submitionCollection.find(filter).toArray();
   res.send(result);
+ } catch (error) {
+  
+ }
 })
 
 // Submition create
 app.post('/api/v1/create-submition', async (req, res) => {
+ try {
   const submition = req.body;
   const result = await submitionCollection.insertOne(submition);
   res.send(result);
+ } catch (error) {
+  
+ }
 })
 
 // Submition create
@@ -278,8 +321,12 @@ app.patch('/api/v1/update-submite/:id', async (req, res) => {
       status : true
     }
   }
-  const result = await submitionCollection.updateOne(filter, doc);
-  res.send(result);
+  try {
+    const result = await submitionCollection.updateOne(filter, doc);
+    res.send(result);
+  } catch (error) {
+    
+  }
 })
 
 // my submition 
@@ -299,8 +346,12 @@ app.get("/api/v1/my-submition", verifyToken, async (req, res) => {
     query.email  = queryEmail;
   }
 
-  const result = await submitionCollection.find(query).toArray();
-  res.send(result);
+  try {
+    const result = await submitionCollection.find(query).toArray();
+    res.send(result);
+  } catch (error) {
+    
+  }
 
 })
 
@@ -341,8 +392,75 @@ app.post(`/api/v1/logout`, async (req, res) => {
   }
 })
 
+// Create new user
+app.post('/api/v1/user', async(req, res)=>{
+  const body = req.body;
+  try {
+    const user = await userCollection.insertOne(body);
+    res.send({
+      success:true,
+      user,
+    })
+  } catch (error) {
+    console.log(error);
+  }
+})
+
+// find single user
+app.get('/api/v1/user/:id', async (req, res) => {
+  try {
+    const id = req.params?.id;
+    const filter = {_id: new ObjectId(id)};
+    const result = await userCollection.findOne(filter)
+    res.send(result);
+  } catch (error) {
+    res.send({message:error.message})
+    console.log(error);
+  }
+})
 
 
+// Update assignments
+app.patch("/api/v1/user/:id", verifyToken, async (req, res) => {
+    
+  try {
+    const id = req.params?.id;
+    const queryEmail = req.query?.email;
+    const tokenEmail = req.user?.email;
+
+    if(queryEmail !== tokenEmail){
+      return res.send({
+        message : "forbidden access",
+        success : false,
+      })
+    }
+
+    const filter = {
+      _id: new ObjectId(id),
+    };
+
+    const user = req.body;
+    const updateDoc = {
+      $set: user
+    }
+
+    // if( productEmail === tokenEmail ){
+      const result = await userCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    // }else{
+    //   res.send({
+    //     success: false,
+    //     message : "You do not own this assignment"
+    //   })
+    // }
+  } catch (error) {
+    res.send({
+      success : false,
+      error : error.message,
+    })
+  }
+   
+})
 
 
 app.listen(port , () => {
